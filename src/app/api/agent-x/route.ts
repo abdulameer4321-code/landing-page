@@ -1,13 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AGENT_X_SYSTEM_PROMPT } from "@/lib/agent-x-prompt";
 
 // Force runtime execution on every request (never cache or pre-render at build time)
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Simple in-memory rate limiting: IP -> timestamp array
+// System Prompt for Agent X
+const AGENT_X_SYSTEM_PROMPT = `You are Agent X, a helpful DPDP Copilot on the DPDP MatriX website created by Ameer Riaz.
+
+Your job is to answer questions about:
+1. India's Digital Personal Data Protection Act, 2023 (DPDP Act) and the DPDP Rules.
+2. The four privacy tools: Privacy Peek, Consent Desk, ROPAx, and Gap Assessment.
+
+Writing rules you must follow:
+- Write in short, crisp, helpful sentences.
+- Use plain language. Explain terms simply (e.g., "Data Fiduciary: the business that determines the purpose of processing").
+- Keep replies focused and under 3 short paragraphs.
+- Never give formal legal advice. State you provide general information on Indian privacy law.
+- For unrelated queries, state: "I can only help with questions about Indian privacy law and the DPDP MatriX tools."
+
+About the tools:
+- Privacy Peek: Browser extension that inspects websites on-device to highlight notices and trackers. Status: Walkthrough only.
+- Consent Desk: Consent management platform for unbundled notices and verifiable consent receipts. Status: Live.
+- ROPAx: Digital Record of Processing Activities engine for DPDP compliance. Status: Live.
+- Gap Assessment: Readiness questionnaire hosted at cloude5.tech highlighting compliance gaps. Status: Beta.
+
+About the creator:
+- Ameer Riaz is a Privacy Professional based in Bengaluru, Karnataka.
+- Credentials: BBA LL.B. · LL.M. (Data Privacy and Information Technology) · Pursuing CIPP/E and DSCI.`;
+
+// In-memory rate limiting: max 10 requests per minute per IP
 const ipRequestHistory = new Map<string, number[]>();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 10;
 
 function isRateLimited(ip: string): boolean {
@@ -25,165 +48,53 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
-// Helper to get API key from common environment variable variations
-function getApiKey(): string {
+// Read API key from common environment variable names
+function getGoogleApiKey(): string {
   const rawKey =
     process.env.AGENT_X_API_KEY ||
-    process.env.LLM_GATEWAY_API_KEY ||
-    process.env.LLMGATEWAY_API_KEY ||
-    process.env.NEXT_PUBLIC_AGENT_X_API_KEY ||
     process.env.GEMINI_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.GROQ_API_KEY ||
-    process.env.ANTHROPIC_API_KEY ||
-    process.env.AGENTX_API_KEY ||
-    process.env.AGENT_X_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_AI_KEY ||
+    process.env.AI_STUDIO_API_KEY ||
+    process.env.NEXT_PUBLIC_AGENT_X_API_KEY ||
     "";
 
-  // Clean any accidental whitespace or wrapping quotes from copy-paste
+  // Strip whitespace and accidental surrounding quotes
   return rawKey.trim().replace(/^["']|["']$/g, "");
 }
 
-// Swappable provider function to call the AI model API (supports LLM Gateway, Gemini, OpenAI, Groq, Anthropic)
-async function callAiModel(prompt: string, userMessage: string): Promise<string> {
-  const apiKey = getApiKey();
-  const customModel = (process.env.AGENT_X_MODEL || "").trim();
-  const customBaseUrl = (process.env.AGENT_X_BASE_URL || "").trim().replace(/\/+$/, "");
+// Built-in offline knowledge fallback
+function getOfflineFallbackResponse(userMessage: string): string {
+  const lower = userMessage.toLowerCase();
+
+  if (lower.includes("privacy peek")) {
+    return "Privacy Peek is a client-side browser extension that inspects web pages directly on your device. It shows what notices and tracking cookies are placed, without sending your browsing data to any server. It is currently available as a walkthrough video.";
+  }
+  if (lower.includes("consent desk")) {
+    return "Consent Desk helps websites create clear, unbundled notices for each purpose. It gives visitors a verifiable receipt and allows them to withdraw consent at any time.";
+  }
+  if (lower.includes("ropa")) {
+    return "ROPAx is a tool to maintain a Record of Processing Activities. It documents what personal data you collect, why you collect it, who you share it with, and when you plan to delete it.";
+  }
+  if (lower.includes("gap assessment") || lower.includes("cloude5")) {
+    return "Gap Assessment is an interactive readiness tool hosted at cloude5.tech. It asks simple questions about your data practices and highlights where you need to take action under Indian privacy rules.";
+  }
+  if (lower.includes("dpdp") || lower.includes("law") || lower.includes("act") || lower.includes("section")) {
+    return "The Digital Personal Data Protection Act, 2023 (DPDP Act) is India's comprehensive data privacy law. It governs the processing of digital personal data, requiring Data Fiduciaries to obtain clear consent, provide purpose-specific notices, ensure data erasure, and protect the rights of Data Principals.";
+  }
+
+  return "Thank you for asking. Agent X provides general information about Indian privacy law and these four privacy tools. To enable live Google AI Studio model answers, set AGENT_X_API_KEY in your environment.";
+}
+
+// Call Google AI Studio (Gemini) API
+async function callGoogleAiStudio(userMessage: string): Promise<string> {
+  const apiKey = getGoogleApiKey();
+  const model = (process.env.AGENT_X_MODEL || "gemini-1.5-flash").trim();
 
   if (!apiKey) {
-    // Helpful fallback response when API key is not yet set in environment
     return getOfflineFallbackResponse(userMessage);
   }
 
-  // 1. Explicit Custom Base URL or LLM Gateway (llmgateway.io)
-  // LLM Gateway keys start with llmgtwy_ or llm_ or gw_, or when using LLMGateway provider
-  const isLlmGateway =
-    Boolean(customBaseUrl) ||
-    apiKey.startsWith("llmgtwy_") ||
-    apiKey.startsWith("llm_") ||
-    apiKey.startsWith("gw_") ||
-    Boolean(process.env.LLM_GATEWAY_API_KEY) ||
-    Boolean(process.env.LLMGATEWAY_API_KEY) ||
-    (!apiKey.startsWith("AIzaSy") && !apiKey.startsWith("sk-ant-") && !apiKey.startsWith("gsk_"));
-
-  if (isLlmGateway) {
-    const baseUrl = customBaseUrl || "https://api.llmgateway.io/v1";
-    const endpoint = `${baseUrl}/chat/completions`;
-    const model = customModel || "gpt-4o-mini";
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 350,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-      const msg = errJson?.error?.message || `LLM Gateway responded with status ${res.status}`;
-      throw new Error(`LLM Gateway Error (${res.status}): ${msg}`);
-    }
-    const data = await res.json();
-    return (data?.choices?.[0]?.message?.content || "").trim();
-  }
-
-  // 1. OpenAI (sk-...)
-  if (apiKey.startsWith("sk-") && !apiKey.startsWith("sk-ant-")) {
-    const model = customModel || "gpt-4o-mini";
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 350,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-      const msg = errJson?.error?.message || `OpenAI responded with status ${res.status}`;
-      throw new Error(`OpenAI Error (${res.status}): ${msg}`);
-    }
-    const data = await res.json();
-    return (data?.choices?.[0]?.message?.content || "").trim();
-  }
-
-  // 2. Groq (gsk_...)
-  if (apiKey.startsWith("gsk_")) {
-    const model = customModel || "llama-3.1-8b-instant";
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 350,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-      const msg = errJson?.error?.message || `Groq responded with status ${res.status}`;
-      throw new Error(`Groq Error (${res.status}): ${msg}`);
-    }
-    const data = await res.json();
-    return (data?.choices?.[0]?.message?.content || "").trim();
-  }
-
-  // 3. Anthropic (sk-ant-...)
-  if (apiKey.startsWith("sk-ant-")) {
-    const model = customModel || "claude-3-5-haiku-latest";
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 350,
-        system: prompt,
-        messages: [{ role: "user", content: userMessage }],
-      }),
-    });
-
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-      const msg = errJson?.error?.message || `Anthropic responded with status ${res.status}`;
-      throw new Error(`Anthropic Error (${res.status}): ${msg}`);
-    }
-    const data = await res.json();
-    return (data?.content?.[0]?.text || "").trim();
-  }
-
-  // 4. Default: Google Gemini API (AIzaSy... or standard Gemini key)
-  const model = customModel || "gemini-1.5-flash";
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const res = await fetch(endpoint, {
@@ -193,20 +104,22 @@ async function callAiModel(prompt: string, userMessage: string): Promise<string>
       contents: [
         {
           role: "user",
-          parts: [{ text: `${prompt}\n\nUser Question: ${userMessage}` }],
+          parts: [{ text: `${AGENT_X_SYSTEM_PROMPT}\n\nUser Question: ${userMessage}` }],
         },
       ],
       generationConfig: {
-        maxOutputTokens: 350,
+        maxOutputTokens: 400,
         temperature: 0.3,
       },
     }),
   });
 
   if (!res.ok) {
-    const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-    const msg = errJson?.error?.message || `Gemini responded with status ${res.status}`;
-    throw new Error(`Gemini Error (${res.status}): ${msg}`);
+    const errJson = (await res.json().catch(() => null)) as {
+      error?: { message?: string; status?: string };
+    } | null;
+    const msg = errJson?.error?.message || `Google AI Studio responded with status ${res.status}`;
+    throw new Error(msg);
   }
 
   const data = await res.json();
@@ -215,28 +128,6 @@ async function callAiModel(prompt: string, userMessage: string): Promise<string>
     "I was unable to generate an answer at this moment. Please try again.";
 
   return answer.trim();
-}
-
-function getOfflineFallbackResponse(userMessage: string): string {
-  const lower = userMessage.toLowerCase();
-
-  if (lower.includes("privacy peek")) {
-    return "Privacy Peek is a browser tool that inspects web pages directly on your device. It shows what notices and tracking cookies are placed, without sending your browsing data to any server. It is currently available as a walkthrough video.";
-  }
-  if (lower.includes("consent desk")) {
-    return "Consent Desk helps websites create clear, unbundled notices for each purpose. It gives visitors a verifiable receipt and allows them to withdraw consent at any time.";
-  }
-  if (lower.includes("ropa")) {
-    return "ROPAx is a tool to maintain a Record of Processing Activities. It documents what personal data you collect, why you collect it, who you share it with, and when you plan to delete it.";
-  }
-  if (lower.includes("gap assessment") || lower.includes("cloude5")) {
-    return "Gap Assessment is an interactive tool hosted at cloude5.tech. It asks simple questions about your data practices and highlights where you need to take action under Indian privacy rules.";
-  }
-  if (lower.includes("dpdp") || lower.includes("law") || lower.includes("act")) {
-    return "The Digital Personal Data Protection Act, 2023 is India's primary data privacy law. It requires companies (Data Fiduciaries) to provide clear notices, obtain genuine consent, protect user data, and erase data when its purpose is fulfilled.";
-  }
-
-  return "Thank you for asking. Agent X provides general information about Indian privacy law and these four tools. Note: To enable live model responses, please set AGENT_X_API_KEY in your environment.";
 }
 
 export async function POST(req: NextRequest) {
@@ -271,15 +162,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const reply = await callAiModel(AGENT_X_SYSTEM_PROMPT, message);
-
+    const reply = await callGoogleAiStudio(message);
     return NextResponse.json({ reply });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[Agent X Route Error]:", errorMsg);
-    // Return transparent feedback in chat so the user can see what the AI provider returned
+    console.error("[Agent X Google AI Studio Error]:", errorMsg);
+
+    // Provide helpful notice in chat so you can see if the key has quota or permissions issues
     return NextResponse.json({
-      reply: `⚠️ [AI Service Notice]: ${errorMsg}\n\nHere is information from the DPDP knowledge base:\n\n${getOfflineFallbackResponse(message)}`,
+      reply: `⚠️ [Google AI Studio Note]: ${errorMsg}\n\nHere is information from the DPDP knowledge base:\n\n${getOfflineFallbackResponse(message)}`,
     });
   }
 }
