@@ -15,13 +15,23 @@ interface ProductViewProps {
   interactiveDemo?: React.ReactNode;
 }
 
-export function ProductView({ product, interactiveDemo }: ProductViewProps) {
+export function ProductView({ product }: ProductViewProps) {
   const isPrivacyPeek = product.id === "privacy-peek";
   const isRopax = product.id === "ropa-generator";
+  const isConsentDesk = product.id === "consent-desk";
+  const isGapAssessment = product.id === "gap-assessment";
   const [youtubeLoaded, setYoutubeLoaded] = useState(false);
 
-  const toolUrl = TOOL_LINKS[product.toolUrlKey];
-  const hasExternalLink = Boolean(toolUrl && toolUrl.trim().length > 0);
+  // Link to live tool platform
+  const toolUrl =
+    TOOL_LINKS[product.toolUrlKey] ||
+    (isConsentDesk
+      ? "https://consentdesk.dpdpmatrix.in"
+      : isRopax
+      ? "https://ropax.dpdpmatrix.in"
+      : isGapAssessment
+      ? "https://cloude5.tech"
+      : "#");
 
   const hasVideoFile = Boolean(PRIVACY_PEEK_VIDEO.file && PRIVACY_PEEK_VIDEO.file.trim().length > 0);
   const hasYoutubeId = Boolean(PRIVACY_PEEK_VIDEO.youtubeId && PRIVACY_PEEK_VIDEO.youtubeId.trim().length > 0);
@@ -58,17 +68,19 @@ export function ProductView({ product, interactiveDemo }: ProductViewProps) {
             </span>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {product.logoUrl ? (
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <Image
-                  src={product.logoUrl}
-                  alt={`${product.name} Logo`}
-                  width={320}
-                  height={80}
-                  priority
-                  style={{ height: 48, width: "auto", objectFit: "contain" }}
-                />
+                <div className="tool-logo-box" style={{ padding: "8px 16px" }}>
+                  <Image
+                    src={product.logoUrl}
+                    alt={`${product.name} Logo`}
+                    width={320}
+                    height={80}
+                    priority
+                    style={{ height: 48, width: "auto", objectFit: "contain" }}
+                  />
+                </div>
                 <h1 className="sr-only" id="tool-title">
                   {product.name}
                 </h1>
@@ -86,7 +98,9 @@ export function ProductView({ product, interactiveDemo }: ProductViewProps) {
             )}
 
             <p className="lede" style={{ marginTop: 6, color: "var(--ink)", fontWeight: 450, maxWidth: "60ch" }}>
-              {product.tagline}
+              {isConsentDesk
+                ? "Consent Desk gives users a clear choice and keeps a record of what they have picked, how it works, and what it does."
+                : product.tagline}
             </p>
           </div>
         </div>
@@ -129,7 +143,7 @@ export function ProductView({ product, interactiveDemo }: ProductViewProps) {
           </div>
         </div>
 
-        {/* Centerpiece: Walkthrough Video for Privacy Peek, Demo for Others */}
+        {/* ── Privacy Peek: Walkthrough Video ── */}
         {isPrivacyPeek ? (
           <section aria-labelledby="privacy-peek-walkthrough-heading" style={{ marginBottom: 44 }}>
             <h2 id="privacy-peek-walkthrough-heading" className="sr-only">
@@ -261,49 +275,186 @@ export function ProductView({ product, interactiveDemo }: ProductViewProps) {
             </div>
           </section>
         ) : (
-          <section aria-labelledby="interactive-example-heading" style={{ marginBottom: 44 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
-              <div>
-                <span className="eyebrow" id="interactive-example-heading">
-                  EXAMPLE
-                </span>
-                <p className="small" style={{ color: "var(--ink-secondary)", marginTop: 4, marginInline: 0 }}>
-                  Try the interactive example below to see how this tool structures data.
-                </p>
+          /* ── Consent Desk, ROPAx, Gap Assessment: Screenshots & Experience Live Section ── */
+          <section aria-labelledby="platform-showcase-heading" style={{ marginBottom: 52 }}>
+            <div style={{ marginBottom: 24 }}>
+              <span className="eyebrow" id="platform-showcase-heading" style={{ color: "var(--brand-orange)" }}>
+                SYSTEM SHOWCASE
+              </span>
+              <h2 className="h2" style={{ marginTop: 8, marginBottom: 8, fontSize: "clamp(22px, 3vw, 28px)" }}>
+                Platform Interface &amp; Workflow
+              </h2>
+              <p style={{ color: "var(--ink-secondary)", fontSize: 16, margin: 0, maxWidth: "65ch" }}>
+                {isConsentDesk
+                  ? "Consent Desk gives users a clear choice and keeps a record of what they have picked, how it works, and what it does."
+                  : isRopax
+                  ? "Explore how ROPAx organizes personal data items, retention schedules, and cross-border vendor disclosures."
+                  : "Explore how Gap Assessment analyzes compliance controls against Section 8 accountability rules."}
+              </p>
+            </div>
+
+            {/* Screenshots Gallery (Placeholders for screenshots) */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                gap: 20,
+                marginBottom: 32,
+              }}
+            >
+              {/* Screenshot Placeholder 1 */}
+              <div
+                style={{
+                  borderRadius: "var(--r)",
+                  border: "1px solid var(--border)",
+                  backgroundColor: "var(--surface)",
+                  overflow: "hidden",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
+                }}
+              >
+                {/* Mock Window Top Bar */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "10px 14px",
+                    backgroundColor: "var(--surface-sunken)",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#ef4444" }} />
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#f59e0b" }} />
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#10b981" }} />
+                  <span style={{ fontSize: 12, color: "var(--ink-muted)", marginLeft: 8, fontFamily: "monospace" }}>
+                    {product.name} — Workspace Overview
+                  </span>
+                </div>
+                {/* Screenshot Frame */}
+                <div
+                  style={{
+                    height: 220,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "var(--surface)",
+                    padding: 24,
+                    textAlign: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 32 }} aria-hidden="true">🖥️</span>
+                  <div style={{ fontWeight: 600, color: "var(--ink)", fontSize: 15 }}>
+                    {product.name} Platform Screenshot
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--ink-secondary)", maxWidth: "34ch" }}>
+                    Dashboard interface showing active data flows, purpose notices, and system logs.
+                  </p>
+                </div>
               </div>
 
-              <div>
-                {hasExternalLink ? (
-                  <a
-                    href={toolUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn--primary"
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-                  >
-                    <span>Open tool</span>
-                    <span aria-hidden="true">↗</span>
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    disabled
-                    className="btn btn--ghost"
-                    style={{ opacity: 0.6, cursor: "not-allowed" }}
-                    aria-disabled="true"
-                  >
-                    Link coming soon
-                  </button>
-                )}
+              {/* Screenshot Placeholder 2 */}
+              <div
+                style={{
+                  borderRadius: "var(--r)",
+                  border: "1px solid var(--border)",
+                  backgroundColor: "var(--surface)",
+                  overflow: "hidden",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
+                }}
+              >
+                {/* Mock Window Top Bar */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "10px 14px",
+                    backgroundColor: "var(--surface-sunken)",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#ef4444" }} />
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#f59e0b" }} />
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#10b981" }} />
+                  <span style={{ fontSize: 12, color: "var(--ink-muted)", marginLeft: 8, fontFamily: "monospace" }}>
+                    {product.name} — Execution &amp; Records
+                  </span>
+                </div>
+                {/* Screenshot Frame */}
+                <div
+                  style={{
+                    height: 220,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "var(--surface)",
+                    padding: 24,
+                    textAlign: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 32 }} aria-hidden="true">📊</span>
+                  <div style={{ fontWeight: 600, color: "var(--ink)", fontSize: 15 }}>
+                    Detailed Records &amp; Verification View
+                  </div>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--ink-secondary)", maxWidth: "34ch" }}>
+                    Exportable audit trail, purpose mapping, and compliance verification receipts.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Interactive Demo */}
-            {interactiveDemo && (
-              <div style={{ borderRadius: "var(--r)", overflow: "hidden", border: "1px solid var(--border)" }}>
-                {interactiveDemo}
+            {/* ── Experience the Tool For Yourself (Action Card) ── */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                textAlign: "center",
+                padding: "36px 28px",
+                borderRadius: "var(--r)",
+                backgroundColor: "var(--surface)",
+                border: "2px solid var(--brand-orange)",
+                boxShadow: "0 12px 30px -6px rgba(232, 90, 42, 0.12)",
+                gap: 16,
+              }}
+            >
+              <span className="eyebrow" style={{ color: "var(--brand-orange)" }}>
+                INTERACTIVE PLATFORM
+              </span>
+              <h3 className="h3" style={{ fontSize: "clamp(22px, 3vw, 28px)", margin: 0 }}>
+                Experience {product.name} by all yourself
+              </h3>
+              <p style={{ maxWidth: "60ch", color: "var(--ink-secondary)", fontSize: 16, margin: 0 }}>
+                This is a complete privacy engineering solution. Launch the full platform to test the
+                complete workflow, create records, and interact with the system live.
+              </p>
+
+              <div style={{ marginTop: 8 }}>
+                <a
+                  href={toolUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn--primary"
+                  style={{
+                    minHeight: 50,
+                    padding: "0 32px",
+                    fontSize: 16,
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>Experience {product.name} Now</span>
+                  <span aria-hidden="true">↗</span>
+                </a>
               </div>
-            )}
+            </div>
           </section>
         )}
 
@@ -311,7 +462,7 @@ export function ProductView({ product, interactiveDemo }: ProductViewProps) {
         {product.highlights && product.highlights.length > 0 && (
           <section aria-labelledby="tool-highlights-heading" style={{ marginBottom: 44 }}>
             <h2 id="tool-highlights-heading" className="eyebrow" style={{ marginBottom: 14 }}>
-              KEY FEATURES
+              KEY CAPABILITIES
             </h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
               {product.highlights.map((item, idx) => (
@@ -339,7 +490,7 @@ export function ProductView({ product, interactiveDemo }: ProductViewProps) {
           </section>
         )}
 
-        {/* Section D: What it does not do */}
+        {/* What it does not do */}
         <aside
           aria-labelledby="what-it-does-not-do-heading"
           style={{
