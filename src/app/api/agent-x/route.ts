@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// System Prompt for Agent X
+// System Prompt for Agent X (inlined so there are zero missing import errors)
 const AGENT_X_SYSTEM_PROMPT = `You are Agent X, a helpful DPDP Copilot on the DPDP MatriX website created by Ameer Riaz.
 
 Your job is to answer questions about:
@@ -59,7 +59,7 @@ function getGoogleApiKey(): string {
     process.env.NEXT_PUBLIC_AGENT_X_API_KEY ||
     "";
 
-  // Strip whitespace and accidental surrounding quotes
+  // Clean any whitespace or accidental wrapping quotes from copy-pasting
   return rawKey.trim().replace(/^["']|["']$/g, "");
 }
 
