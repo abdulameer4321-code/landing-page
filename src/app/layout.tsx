@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/outfit";
+import { Analytics } from "@vercel/analytics/next";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
@@ -86,6 +87,9 @@ export default function RootLayout({
 
           {/* Footer */}
           <Footer />
+
+          {/* Vercel Web Analytics */}
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>
