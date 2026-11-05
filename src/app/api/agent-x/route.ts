@@ -93,7 +93,7 @@ async function callGoogleAiStudio(userMessage: string): Promise<string> {
     return getOfflineFallbackResponse(userMessage);
   }
 
-  // Active Google AI Studio models in order of preference
+  // Active current models in order of preference (gemini-2.0-flash is Google's current default)
   const candidateModels = [
     process.env.AGENT_X_MODEL?.trim(),
     "gemini-2.0-flash",
@@ -131,7 +131,7 @@ async function callGoogleAiStudio(userMessage: string): Promise<string> {
         } | null;
         lastError = errJson?.error?.message || `Status ${res.status}`;
 
-        // If this specific model is not found, try the next candidate model in the list
+        // If this specific model is not found, try the next candidate model
         if (res.status === 404 || lastError.includes("not found")) {
           continue;
         }
@@ -159,5 +159,42 @@ async function callGoogleAiStudio(userMessage: string): Promise<string> {
 export async function POST(req: NextRequest) {
   let message = "";
   try {
-    const ip =
-      req.headers.get("x-forwarded-for")?.
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = forwarded ? forwarded.split(",")[0].trim() : req.headers.get("x-real-ip") || "127.0.0.1";
+
+    if (isRateLimited(ip)) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a moment before asking another question." },
+        { status: 429 }
+      );
+    }
+
+    const body = await req.json();
+    message = (body?.message || "").trim();
+
+    if (!message) {
+      return NextResponse.json(
+        { error: "Please enter a question." },
+        { status: 400 }
+      );
+    }
+
+    if (message.length > 500) {
+      return NextResponse.json(
+        { error: "Questions are limited to 500 characters." },
+        { status: 400 }
+      );
+    }
+
+    const reply = await callGoogleAiStudio(message);
+    return NextResponse.json({ reply });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("[Agent X Google AI Studio Error]:", errorMsg);
+
+    // Provide helpful notice in chat alongside knowledge base info
+    return NextResponse.json({
+      reply: `⚠️ [Google AI Studio Note]: ${errorMsg}\n\nHere is information from the DPDP knowledge base:\n\n${getOfflineFallbackResponse(message)}`,
+    });
+  }
+}
