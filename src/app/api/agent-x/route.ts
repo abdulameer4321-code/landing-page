@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AGENT_X_SYSTEM_PROMPT } from "@/lib/agent-x-prompt";
 
+// Force runtime execution on every request (never cache or pre-render at build time)
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // Simple in-memory rate limiting: IP -> timestamp array
 const ipRequestHistory = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
@@ -21,18 +25,165 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
-// Swappable provider function to call the AI model API
+// Helper to get API key from common environment variable variations
+function getApiKey(): string {
+  const rawKey =
+    process.env.AGENT_X_API_KEY ||
+    process.env.LLM_GATEWAY_API_KEY ||
+    process.env.LLMGATEWAY_API_KEY ||
+    process.env.NEXT_PUBLIC_AGENT_X_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GROQ_API_KEY ||
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.AGENTX_API_KEY ||
+    process.env.AGENT_X_KEY ||
+    "";
+
+  // Clean any accidental whitespace or wrapping quotes from copy-paste
+  return rawKey.trim().replace(/^["']|["']$/g, "");
+}
+
+// Swappable provider function to call the AI model API (supports LLM Gateway, Gemini, OpenAI, Groq, Anthropic)
 async function callAiModel(prompt: string, userMessage: string): Promise<string> {
-  const apiKey = process.env.AGENT_X_API_KEY;
-  const model = process.env.AGENT_X_MODEL || "gemini-1.5-flash";
+  const apiKey = getApiKey();
+  const customModel = (process.env.AGENT_X_MODEL || "").trim();
+  const customBaseUrl = (process.env.AGENT_X_BASE_URL || "").trim().replace(/\/+$/, "");
 
   if (!apiKey) {
     // Helpful fallback response when API key is not yet set in environment
     return getOfflineFallbackResponse(userMessage);
   }
 
-  // Example integration with Gemini / compatible REST endpoint
-  // Keeps provider call isolated in one function so it can be swapped anytime
+  // 1. Explicit Custom Base URL or LLM Gateway (llmgateway.io)
+  // LLM Gateway keys start with llmgtwy_ or llm_ or gw_, or when using LLMGateway provider
+  const isLlmGateway =
+    Boolean(customBaseUrl) ||
+    apiKey.startsWith("llmgtwy_") ||
+    apiKey.startsWith("llm_") ||
+    apiKey.startsWith("gw_") ||
+    Boolean(process.env.LLM_GATEWAY_API_KEY) ||
+    Boolean(process.env.LLMGATEWAY_API_KEY) ||
+    (!apiKey.startsWith("AIzaSy") && !apiKey.startsWith("sk-ant-") && !apiKey.startsWith("gsk_"));
+
+  if (isLlmGateway) {
+    const baseUrl = customBaseUrl || "https://api.llmgateway.io/v1";
+    const endpoint = `${baseUrl}/chat/completions`;
+    const model = customModel || "gpt-4o-mini";
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 350,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const msg = errJson?.error?.message || `LLM Gateway responded with status ${res.status}`;
+      throw new Error(`LLM Gateway Error (${res.status}): ${msg}`);
+    }
+    const data = await res.json();
+    return (data?.choices?.[0]?.message?.content || "").trim();
+  }
+
+  // 1. OpenAI (sk-...)
+  if (apiKey.startsWith("sk-") && !apiKey.startsWith("sk-ant-")) {
+    const model = customModel || "gpt-4o-mini";
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 350,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const msg = errJson?.error?.message || `OpenAI responded with status ${res.status}`;
+      throw new Error(`OpenAI Error (${res.status}): ${msg}`);
+    }
+    const data = await res.json();
+    return (data?.choices?.[0]?.message?.content || "").trim();
+  }
+
+  // 2. Groq (gsk_...)
+  if (apiKey.startsWith("gsk_")) {
+    const model = customModel || "llama-3.1-8b-instant";
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: userMessage },
+        ],
+        max_tokens: 350,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const msg = errJson?.error?.message || `Groq responded with status ${res.status}`;
+      throw new Error(`Groq Error (${res.status}): ${msg}`);
+    }
+    const data = await res.json();
+    return (data?.choices?.[0]?.message?.content || "").trim();
+  }
+
+  // 3. Anthropic (sk-ant-...)
+  if (apiKey.startsWith("sk-ant-")) {
+    const model = customModel || "claude-3-5-haiku-latest";
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 350,
+        system: prompt,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const msg = errJson?.error?.message || `Anthropic responded with status ${res.status}`;
+      throw new Error(`Anthropic Error (${res.status}): ${msg}`);
+    }
+    const data = await res.json();
+    return (data?.content?.[0]?.text || "").trim();
+  }
+
+  // 4. Default: Google Gemini API (AIzaSy... or standard Gemini key)
+  const model = customModel || "gemini-1.5-flash";
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const res = await fetch(endpoint, {
@@ -53,7 +204,9 @@ async function callAiModel(prompt: string, userMessage: string): Promise<string>
   });
 
   if (!res.ok) {
-    throw new Error(`AI service responded with status ${res.status}`);
+    const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    const msg = errJson?.error?.message || `Gemini responded with status ${res.status}`;
+    throw new Error(`Gemini Error (${res.status}): ${msg}`);
   }
 
   const data = await res.json();
@@ -87,6 +240,7 @@ function getOfflineFallbackResponse(userMessage: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  let message = "";
   try {
     const ip =
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -101,7 +255,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const message = (body?.message || "").trim();
+    message = (body?.message || "").trim();
 
     if (!message) {
       return NextResponse.json(
@@ -120,10 +274,12 @@ export async function POST(req: NextRequest) {
     const reply = await callAiModel(AGENT_X_SYSTEM_PROMPT, message);
 
     return NextResponse.json({ reply });
-  } catch {
-    return NextResponse.json(
-      { error: "Sorry, I ran into an issue getting an answer. Please try again shortly." },
-      { status: 500 }
-    );
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error("[Agent X Route Error]:", errorMsg);
+    // Return transparent feedback in chat so the user can see what the AI provider returned
+    return NextResponse.json({
+      reply: `⚠️ [AI Service Notice]: ${errorMsg}\n\nHere is information from the DPDP knowledge base:\n\n${getOfflineFallbackResponse(message)}`,
+    });
   }
 }
