@@ -1,0 +1,41 @@
+{
+  "brand_name": "DPDP MatriX",
+  "version": "2.0.0",
+  "source": "Unified Design System v2.0 — Website Standards",
+  "palette": {
+    "light": {
+      "canvas": "#F7F7F2",
+      "primary_ink": "#14222D",
+      "body_ink": "#3E5160",
+      "muted": "#7B8C9C",
+      "brand_orange": "#EC703C",
+      "orange_tint": "rgba(236,112,60,0.12)",
+      "surface": "#FFFFFF",
+      "border": "#E5E7EB"
+    },
+    "dark": {
+      "canvas": "#0E171F",
+      "primary_ink": "#EDF2F7",
+      "body_ink": "#94A3B8",
+      "muted": "#64748B",
+      "brand_orange": "#EC703C",
+      "orange_tint": "rgba(236,112,60,0.18)",
+      "surface": "#16212B",
+      "border": "#273846"
+    },
+    "status": {
+      "success": "#246345",
+      "warning": "#B45309",
+      "danger": "#9B3028"
+    }
+  },
+  "typeface": {
+    "family": "Outfit Variable, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+  },
+  "logo_rules": {
+    "primary": "/brand/logo-primary.png",
+    "reversed": "/brand/logo-reversed.png",
+    "stacked": "/brand/logo-stacked.png",
+    "compact": "/brand/icon-only.png"
+  }
+}
