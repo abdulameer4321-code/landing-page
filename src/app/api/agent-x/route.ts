@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// System Prompt for Agent X (inlined so there are zero missing import errors)
+// System Prompt for Agent X
 const AGENT_X_SYSTEM_PROMPT = `You are Agent X, a helpful DPDP Copilot on the DPDP MatriX website created by Ameer Riaz.
 
 Your job is to answer questions about:
@@ -86,91 +86,78 @@ function getOfflineFallbackResponse(userMessage: string): string {
   return "Thank you for asking. Agent X provides general information about Indian privacy law and these four privacy tools. To enable live Google AI Studio model answers, set AGENT_X_API_KEY in your environment.";
 }
 
-// Call Google AI Studio (Gemini) API
+// Call Google AI Studio (Gemini) API with automatic fallback across active model names
 async function callGoogleAiStudio(userMessage: string): Promise<string> {
   const apiKey = getGoogleApiKey();
-  const model = (process.env.AGENT_X_MODEL || "gemini-1.5-flash").trim();
-
   if (!apiKey) {
     return getOfflineFallbackResponse(userMessage);
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  // Active Google AI Studio models in order of preference
+  const candidateModels = [
+    process.env.AGENT_X_MODEL?.trim(),
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro",
+  ].filter(Boolean) as string[];
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `${AGENT_X_SYSTEM_PROMPT}\n\nUser Question: ${userMessage}` }],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 400,
-        temperature: 0.3,
-      },
-    }),
-  });
+  let lastError = "";
 
-  if (!res.ok) {
-    const errJson = (await res.json().catch(() => null)) as {
-      error?: { message?: string; status?: string };
-    } | null;
-    const msg = errJson?.error?.message || `Google AI Studio responded with status ${res.status}`;
-    throw new Error(msg);
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: `${AGENT_X_SYSTEM_PROMPT}\n\nUser Question: ${userMessage}` }],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 400,
+            temperature: 0.3,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = (await res.json().catch(() => null)) as {
+          error?: { message?: string; status?: string };
+        } | null;
+        lastError = errJson?.error?.message || `Status ${res.status}`;
+
+        // If this specific model is not found, try the next candidate model in the list
+        if (res.status === 404 || lastError.includes("not found")) {
+          continue;
+        }
+        throw new Error(lastError);
+      }
+
+      const data = await res.json();
+      const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (answer) {
+        return answer.trim();
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      lastError = msg;
+      if (msg.includes("not found") || msg.includes("404")) {
+        continue;
+      }
+      throw e;
+    }
   }
 
-  const data = await res.json();
-  const answer =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "I was unable to generate an answer at this moment. Please try again.";
-
-  return answer.trim();
+  throw new Error(lastError || "Could not generate content from available Gemini models.");
 }
 
 export async function POST(req: NextRequest) {
   let message = "";
   try {
     const ip =
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      req.headers.get("x-real-ip") ||
-      "127.0.0.1";
-
-    if (isRateLimited(ip)) {
-      return NextResponse.json(
-        { error: "Too many requests. Please wait a moment before asking another question." },
-        { status: 429 }
-      );
-    }
-
-    const body = await req.json();
-    message = (body?.message || "").trim();
-
-    if (!message) {
-      return NextResponse.json(
-        { error: "Please enter a question." },
-        { status: 400 }
-      );
-    }
-
-    if (message.length > 500) {
-      return NextResponse.json(
-        { error: "Questions are limited to 500 characters." },
-        { status: 400 }
-      );
-    }
-
-    const reply = await callGoogleAiStudio(message);
-    return NextResponse.json({ reply });
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[Agent X Google AI Studio Error]:", errorMsg);
-
-    // Provide helpful notice in chat so you can see if the key has quota or permissions issues
-    return NextResponse.json({
-      reply: `⚠️ [Google AI Studio Note]: ${errorMsg}\n\nHere is information from the DPDP knowledge base:\n\n${getOfflineFallbackResponse(message)}`,
-    });
-  }
-}
+      req.headers.get("x-forwarded-for")?.
