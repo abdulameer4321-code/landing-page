@@ -1,8 +1,8 @@
 export const TOOL_LINKS = {
   privacyPeek: "",
-  consentDesk: "",
-  ropax: "",
-  gapAssessment: "https://cloude5.tech",
+  consentDesk: "https://consentdesk.dpdpmatrix.in",
+  ropax: "https://ropax.dpdpmatrix.in",
+  gapAssessment: "https://gap.dpdpmatrix.in",
 } as const;
 
 export const PRIVACY_PEEK_LINKEDIN_URL: string = "";
@@ -84,9 +84,9 @@ export const PRODUCTS: ProductItem[] = [
     name: "Consent Desk",
     slug: "consent-desk",
     category: "Consent Architecture & Notices",
-    tagline: "Give users clear choices and keep a record of what they picked.",
+    tagline: "Consent Desk gives users a clear choice and keeps a record of what they have picked, how it works, and what it does.",
     description:
-      "A tool to create separate, clear consent notices for each purpose. It gives users a receipt and lets them withdraw their choice at any time.",
+      "A tool to create separate, clear consent notices for each purpose. It gives users a record of what they have picked and lets them withdraw their choice at any time.",
     whoItIsFor: "Teams that collect personal data and need a clean way to ask for and record user consent.",
     legalBasis: "DPDP Act Section 6 (Clear consent requests and withdrawal of consent).",
     status: "Live",
